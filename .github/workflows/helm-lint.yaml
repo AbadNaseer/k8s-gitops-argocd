@@ -1,0 +1,62 @@
+name: Helm Lint & Dry-Run
+
+on:
+  pull_request:
+    paths:
+      - 'charts/**'
+      - 'argocd/**'
+
+jobs:
+  helm-lint:
+    name: Lint Helm Charts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Lint api-service (dev)
+        run: |
+          helm lint charts/api-service \
+            -f charts/api-service/values.yaml \
+            -f charts/api-service/values-dev.yaml
+
+      - name: Lint api-service (prod)
+        run: |
+          helm lint charts/api-service \
+            -f charts/api-service/values.yaml \
+            -f charts/api-service/values-prod.yaml
+
+      - name: Template dry-run (prod)
+        run: |
+          helm template api-service-prod charts/api-service \
+            -f charts/api-service/values.yaml \
+            -f charts/api-service/values-prod.yaml \
+            --namespace prod \
+            --debug
+
+  validate-argocd-manifests:
+    name: Validate ArgoCD Manifests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -Lo kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xzf kubeconform.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Validate ArgoCD Application manifests
+        run: |
+          kubeconform \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -summary \
+            argocd/apps/*.yaml
